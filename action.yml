@@ -1,0 +1,44 @@
+name: Aura SBOM
+description: Generate a CycloneDX SBOM from a lockfile and upload it to Linuscent Aura.
+inputs:
+  lockfile:
+    description: Supported lockfile path relative to the repository root.
+    required: true
+  product-id:
+    description: Destination Aura product ID.
+    required: true
+  aura-origin:
+    description: Trusted HTTPS origin of the Aura instance.
+    required: true
+  api-key:
+    description: Aura workspace API key with permission to upload SBOMs.
+    required: true
+  release-version:
+    description: Optional version to assign to the SBOM's root metadata component.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Validate lockfile
+      shell: bash
+      env:
+        AURA_LOCKFILE: ${{ inputs.lockfile }}
+      run: python3 -I "$GITHUB_ACTION_PATH/aura_sbom.py" validate
+    - name: Generate CycloneDX
+      uses: docker://ghcr.io/sbomify/sbomify-action@sha256:309b2ce0c6a2ec9eb6fbcd692b7473cfa891882e4eb6192f7a158ce57c7d2ff0
+      env:
+        LOCK_FILE: ./${{ inputs.lockfile }}
+        OUTPUT_FILE: aura-sbom.cdx.json
+        ENRICH: "true"
+        UPLOAD: "false"
+        SBOM_FORMAT: cyclonedx
+        SPEC_VERSION: "1.6"
+    - name: Upload once to Aura
+      shell: bash
+      env:
+        AURA_PRODUCT_ID: ${{ inputs.product-id }}
+        AURA_ORIGIN: ${{ inputs.aura-origin }}
+        AURA_API_KEY: ${{ inputs.api-key }}
+        AURA_RELEASE_VERSION: ${{ inputs.release-version }}
+      run: python3 -I "$GITHUB_ACTION_PATH/aura_sbom.py" upload

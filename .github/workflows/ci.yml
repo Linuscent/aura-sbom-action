@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s tests
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - name: Prepare fixture and start mock Aura endpoint
+        run: python3 -B tests/github_smoke.py start
+      - name: Trust the mock certificate on the disposable runner
+        run: |
+          sudo install -m 0644 "$AURA_SMOKE_CERT" "/usr/local/share/ca-certificates/aura-smoke-$GITHUB_RUN_ID.crt"
+          sudo update-ca-certificates
+      - uses: ./
+        with:
+          lockfile: apps/smoke/package-lock.json
+          product-id: smoke-product
+          aura-origin: ${{ env.AURA_SMOKE_ORIGIN }}
+          api-key: aura-smoke-not-a-secret
+          release-version: v0.0.1-smoke
+      - name: Verify mock upload receipt
+        run: python3 -B tests/github_smoke.py verify
+      - name: Stop mock endpoint
+        if: always()
+        run: python3 -B tests/github_smoke.py stop
+      - name: Remove the mock certificate
+        if: always()
+        run: |
+          sudo rm -f "/usr/local/share/ca-certificates/aura-smoke-$GITHUB_RUN_ID.crt"
+          sudo update-ca-certificates --fresh
